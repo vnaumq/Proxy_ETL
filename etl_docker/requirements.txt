@@ -1,0 +1,5 @@
+beautifulsoup4==4.12.3
+requests>=2.27.1
+pandas==1.1.5
+azure-storage-blob==12.8.1
+ping3==4.0.5
