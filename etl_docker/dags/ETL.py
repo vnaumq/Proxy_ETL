@@ -1,15 +1,15 @@
 from airflow.models import DAG
 from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
-from datetime import datetime
 from bs4 import BeautifulSoup
 import requests
 import pandas as pd
 from google.cloud import bigquery
 from google.oauth2 import service_account
+from google_authorization import google_json
 import ping3
 import time
-from google_authorization import google_json
+
 
 args = {
     'owner': 'Vnaumq',
@@ -62,23 +62,22 @@ def export_table():
 def transform_table(**context):
     json_data = context['ti'].xcom_pull(task_ids='export')
     df = pd.read_json(json_data)
-    ping_result = []
-    a=0
-    for ip in df['IP Address']:
-        a+=1
+
+    for ip in df['IP Address'].sample(n=df.shape[0]):
         result =  ping3.ping(ip, timeout=4)
+        print(result)
         if result is not None:
-            print(f'{ip} - ping successful {a}/{df.shape[0]} .')
-            ping_result.append(True)
+            print(f"{ip} - ping successful.")
+            df = df.loc[df['IP Address'] == ip]
+            break
+        elif df.shape[0] == 0:
+            print('no succesfuls ip')
+            break
         else:
-            print(f'{ip} - ping failed {a}/{df.shape[0]} .')
-            ping_result.append(False)
-    df['Ping'] = ping_result
-    print(df['Ping'])
-    print('Ready')
+            print(f"{ip} - ping failed.")
+            df.drop(df.loc[df['IP Address'] == ip].index, axis=0, inplace=True)
+    
     df.drop(['Last Checked'], axis=1, inplace=True)
-    df = df.loc[df['Ping'] == True]
-    df.drop(['Ping'], axis=1, inplace=True)
     df.rename(columns={'IP Address' : 'IP'},inplace=True)
     df = df.to_json()
     return df
@@ -87,14 +86,12 @@ def load_table(**context):
     json_data = context['ti'].xcom_pull(task_ids='transform')
     df = pd.read_json(json_data)
     df['Port'] = df['Port'].astype(str)
-    print(df.dtypes)
     project_id = 'testvizuators'
     client = bigquery.Client(credentials= credentials,project=project_id)
     job_config = bigquery.LoadJobConfig(
         autodetect = True,
         write_disposition = 'WRITE_APPEND'
     )
-    print(df.dtypes)
     target_tale_id = 'testvizuators.ip_dataset.ip_table'    
     job = client.load_table_from_dataframe(df, target_tale_id, job_config=job_config)
     while job.state != 'DONE':
