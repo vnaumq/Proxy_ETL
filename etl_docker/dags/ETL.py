@@ -15,16 +15,19 @@ args = {
     'owner': 'Vnaumq',
     'start_date': days_ago(1)
 }
+
 # Задание аргументов для DAG (Directed Acyclic Graph).
 credentials_info = google_json()
 credentials = service_account.Credentials.from_service_account_info(credentials_info)
 #Получение учетных данных для аутентификации в Google Cloud.
+project_id = 'testvizuators'
+# Установка идентификатора проекта
+
 def export_table():
     '''
-    функция для парсинга proxy из сайта  https://free-proxy-list.net/ и проверка на то есть ли этот пинг уже в BQ
+    Функция для парсинга proxy из сайта  https://free-proxy-list.net/ и проверка на то есть ли этот пинг уже в BQ
     '''
-    # Установка идентификатора проекта
-    project_id = 'testvizuators'
+
     # Создание клиента BigQuery с указанными учетными данными и идентификатором проекта
     client = bigquery.Client(credentials= credentials,project=project_id)
     # Запрос к таблице в BigQuery для получения списка IP-адресов
@@ -72,11 +75,14 @@ def export_table():
 
 
 def transform_table(**context):
+    '''
+    Функция, которая проверяет рандомный айпи из датафрейма на валидность
+    '''
+
     # Получение JSON-данных из контекста выполнения предыдущего задания 'export'
     json_data = context['ti'].xcom_pull(task_ids='export')
     # Преобразование JSON-данных в DataFrame
     df = pd.read_json(json_data)
-
     # Итерация по случайным IP-адресам из столбца 'IP Address' в DataFrame
     for ip in df['IP Address'].sample(n=df.shape[0]):
         # Выполнение пинга на IP-адрес с таймаутом 4 секунды
@@ -105,15 +111,15 @@ def transform_table(**context):
     return df
 
 def load_table(**context):
+    '''
+    Функция для загрузки валидного айпи в BQ 
+    '''
     # Получение JSON-данных из контекста выполнения предыдущего задания 'transform'
     json_data = context['ti'].xcom_pull(task_ids='transform')
     # Преобразование JSON-данных в DataFrame
     df = pd.read_json(json_data)
     # Преобразование столбца 'Port' в строковый тип данных
     df['Port'] = df['Port'].astype(str)
-    
-    # Установка идентификатора проекта
-    project_id = 'testvizuators'
     # Создание клиента BigQuery с указанными учетными данными и идентификатором проекта
     client = bigquery.Client(credentials=credentials, project=project_id)
     # Конфигурация задания загрузки
@@ -125,12 +131,10 @@ def load_table(**context):
     target_table_id = 'testvizuators.ip_dataset.ip_table'
     # Загрузка DataFrame в таблицу BigQuery
     job = client.load_table_from_dataframe(df, target_table_id, job_config=job_config)
-    
     # Ожидание завершения выполнения задания загрузки
     while job.state != 'DONE':
         time.sleep(2)
         job.reload()
-    
     # Вывод результата задания и количества загруженных строк
     print(job.result())
     print(f'Loaded {df.shape[0]} rows to "{target_table_id}"')
@@ -140,7 +144,7 @@ with DAG(
     dag_id='proxy_ETL',
     default_args=args,
     schedule_interval='@daily',
-    tags=["proxy_ETL"],
+    tags=["ETL"],
     catchup=False
 ) as dag:
     # Задача 'export' для экспорта данных
