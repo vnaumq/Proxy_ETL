@@ -48,7 +48,6 @@ def proxy_etl():
         for i in results:
             for j in i:
                 ip_gbq.append(j)
-        len(ip_gbq)
         # URL-адрес для парсинга
         url = 'https://free-proxy-list.net/'
         # Запрос страницы
